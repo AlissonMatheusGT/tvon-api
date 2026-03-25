@@ -6,12 +6,13 @@ from flask import Flask, request, jsonify
 import queue
 import threading
 
-# Importação direta corrigida
+# Resolução de dependências do módulo core com fallback estrito de injeção defensiva (Defensive Programming).
+# Garante a integridade parcial de boot do gateway da aplicação mesmo frente a falhas de parser no builder Headless.
 try:
     from automations import gerar_teste_iptv
 except Exception as err:
     mensagem_erro = str(err)
-    print(f"ERRO REAL DE IMPORTACAO: {mensagem_erro}")
+    print(f"Stacktrace de falha na resolução de módulos nativos do kernel: {mensagem_erro}")
     def gerar_teste_iptv(*args, **kwargs):
         q = args[-1]
         from dataclasses import dataclass
@@ -22,11 +23,22 @@ except Exception as err:
             message: str = ""
         q.put(ErrorEvent(kind="error", payload=f"Falha ao carregar o automations.py: {mensagem_erro}", message="Erro"))
 
-# ESTA É A LINHA QUE O GUNICORN ESTAVA PROCURANDO:
+# Instância WSGI root designada para vinculação pass-through com Application Servers robustos (ex: Gunicorn).
 app = Flask(__name__)
 
 @app.route("/gerar-teste-ufo", methods=["POST"])
 def gerar_teste_ufo():
+    """
+    Endpoint/Webhook para orquestração assíncrona do serviço de provisioning de instâncias IPTV.
+
+    Consome payloads de entrada HTTP POST (padronizados por motores de automação orquestrada como n8n)
+    e comissiona a rotina profunda do framework Headless (Camoufox) via injeção de uma thread não-bloqueante genérica,
+    impondo sincronização forçada baseada em Strict Timeouts.
+
+    Returns:
+        tuple[flask.Response, int]: Envelope JSON portando status estrutural das propriedades (success states
+        e payloads descriptografados) atrelado diretamente aos HTTP Headers base de confirmação da transação.
+    """
     data = request.get_json(force=True, silent=True) or {}
     
     nome_cliente = data.get("nome_cliente", "CELULAR_TESTE")
@@ -40,13 +52,14 @@ def gerar_teste_ufo():
     )
     t.start()
     
-    # Timeout de 230 segundos para o n8n ter tempo de resposta
+    # Limitação limitadora de TTL (Time-To-Live) injetada garantindo a sincronia global contra timeouts 
+    # de fluxos externos acoplados à API Gateway do projeto (threshold de instâncias n8n).
     t.join(timeout=230)
 
     final_payload = None
     erro_detalhado = None
 
-    # Consumir a fila para pegar o resultado final
+    # Loop de drenagem do barramento de eventos/telemetria para resgate retrospectivo do State Component nativo.
     while not q.empty():
         try:
             ev = q.get_nowait()
@@ -59,7 +72,7 @@ def gerar_teste_ufo():
             break
 
     if final_payload:
-        # Retorna o JSON completo com user, pass e o texto original
+        # Devolve interface de resposta acoplando diretamente os chaves atreladas em ambiente seguro.
         return jsonify({
             "sucesso": True, 
             "user": final_payload.get("user"),
