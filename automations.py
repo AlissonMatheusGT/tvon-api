@@ -81,6 +81,42 @@ CONFIG_PAINEIS = {
         "menu_selector": 'a[href="#/customers"]',
         "nome_servidor": "TIGRE AGILE PREMIUM", 
         "regex_plano": r"TESTE TIGER PREMIUM PADRÃO"
+    },
+    "ADAM": {
+        "url": "https://paineladamplay.com/#/sign-in",
+        "usuario": os.getenv("ADAM_USER"),
+        "senha": os.getenv("ADAM_PASS"),
+        "server_selector": 'div[data-test="server_id"] .el-select__wrapper',
+        "plan_selector": 'div[data-test="package_id"] .el-select__wrapper',
+        "nome_selector": 'input[data-test="name"]',
+        "salvar_selector": 'button[type="submit"]',
+        "menu_selector": 'a[href="#/customers"]',
+        "nome_servidor": "AdamPlay",
+        "regex_plano": r"TESTE GRÁTIS | 12 HORAS | COMPLETO"
+    },
+    "SPARK": {
+        "url": "https://sparkpainel.top/#/dashboard",
+        "usuario": os.getenv("SPARK_USER"),
+        "senha": os.getenv("SPARK_PASS"),
+        "server_selector": 'div[data-test="server_id"] .el-select__wrapper',
+        "plan_selector": 'div[data-test="package_id"] .el-select__wrapper',
+        "nome_selector": 'input[data-test="name"]',
+        "salvar_selector": 'button[type="submit"]',
+        "menu_selector": 'a[href="#/customers"]',
+        "nome_servidor": "SPARK",
+        "regex_plano": r"3 Horas Completo"
+    },
+    "TOPCINE": {
+        "url": "https://tv-top-cine.sigmab.pro/#/sign-in",
+        "usuario": os.getenv("TOPCINE_USER"),
+        "senha": os.getenv("TOPCINE_PASS"),
+        "server_selector": 'div[data-test="server_id"] .el-select__wrapper',
+        "plan_selector": 'div[data-test="package_id"] .el-select__wrapper',
+        "nome_selector": 'input[data-test="name"]',
+        "salvar_selector": 'button[type="submit"]',
+        "menu_selector": 'a[href="#/customers"]',
+        "nome_servidor": "Top Cine Revo",
+        "regex_plano": r"Teste - completo c/ adultos 6h"
     }
 }
 
@@ -280,3 +316,37 @@ def gerar_teste_iptv(nome_cliente: str, servidor_key: str, ver_navegador: bool, 
                 q.put(ProgressEvent(100, "Crash Estrutural / Esgotamento de Retry Policy", kind="error", payload=f"Target {servidor_key} excedeu o limite arquitetural de tolerância ({max_retries} max attempts). Trace Dump: {str(e)}"))
                 return
             time.sleep(2)
+
+if __name__ == "__main__":
+    q_teste = queue.Queue() 
+    
+    # MUDE APENAS ESTA LINHA PARA TESTAR DIFERENTES PAINÉIS
+    PAINEL_PARA_TESTAR = "TOPCINE" 
+    
+    print(f"🚀 Iniciando ambiente de testes locais para: {PAINEL_PARA_TESTAR}...\n")
+    
+    gerar_teste_iptv(
+        nome_cliente="ALISSON TESTE LOCAL", 
+        servidor_key=PAINEL_PARA_TESTAR,
+        ver_navegador=True, 
+        slot_destino=PAINEL_PARA_TESTAR, 
+        q=q_teste,
+        max_retries=3
+    )
+
+    while not q_teste.empty():
+        ev = q_teste.get()
+        if ev.kind == "warning":
+            print(f"⚠️  [{ev.percent}%] {ev.message}")
+        elif ev.kind == "error":
+            print(f"❌ [{ev.percent}%] {ev.message} | Detalhes: {ev.payload}")
+        elif ev.kind == "credential_found":
+            print(f"✅ [{ev.percent}%] {ev.message}")
+            print("\n================ CREDENCIAIS ==================")
+            print(f"Usuário: {ev.payload.get('user')}")
+            print(f"Senha:   {ev.payload.get('pass')}")
+            print("================ TEXTO COMPLETO ===============\n")
+            print(ev.payload.get('stdout'))
+            print("\n===============================================")
+        else:
+            print(f"🔄 [{ev.percent}%] {ev.message}")
