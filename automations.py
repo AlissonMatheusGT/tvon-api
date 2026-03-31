@@ -231,6 +231,10 @@ def gerar_teste_iptv(nome_cliente: str, servidor_key: str, ver_navegador: bool, 
             
             with Camoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=True) as browser:
                 page = browser.new_page()
+                
+                # DIETA DA VPS: Bloqueia imagens, vídeos, fontes e CSS para poupar muita RAM
+                page.route("**/*", lambda route: route.abort() if route.request.resource_type in ["image", "media", "font", "stylesheet"] else route.continue_())
+                
                 page.set_default_timeout(30000) 
                 
                 q.put(ProgressEvent(20, "Estabelecendo handshake TCP/TLS e despachando payload de autenticação inicial da sessão..."))
