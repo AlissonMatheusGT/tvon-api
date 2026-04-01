@@ -1,5 +1,5 @@
 .env
-automations_bkp.py
+automations_*
 eval*
 test*
 venv/
