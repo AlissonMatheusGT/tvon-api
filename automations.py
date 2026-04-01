@@ -84,7 +84,8 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
     return False
 
 async def abortar_recursos_pesados(route: Route):
-    if route.request.resource_type in ["image", "media", "font", "stylesheet"]:
+    # Deixamos o CSS e Fontes passarem para o Cloudflare e o Vue.js renderizarem os campos
+    if route.request.resource_type in ["image", "media"]:
         await route.abort()
     else:
         await route.continue_()
