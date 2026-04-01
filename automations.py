@@ -11,24 +11,70 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# Instância da API
 app = FastAPI(title="TVON - API de Automação de Testes IPTV")
 
-fila_espera = asyncio.Semaphore(5)
+fila_espera = asyncio.Semaphore(5) 
 
-# Mapeamento de Configurações (Cole as outras configurações aqui depois)
 CONFIG_PAINEIS = {
-    "TOPCINE": {
-        "url": "https://tv-top-cine.sigmab.pro/#/sign-in",
-        "usuario": os.getenv("TOPCINE_USER"),
-        "senha": os.getenv("TOPCINE_PASS"),
+    "UFO": {
+        "url": "https://ufoplay.sigmab.pro/#/sign-in",
+        "usuario": os.getenv("UFO_USER"),
+        "senha": os.getenv("UFO_PASS"),
         "server_selector": 'div[data-test="server_id"] .el-select__wrapper',
         "plan_selector": 'div[data-test="package_id"] .el-select__wrapper',
         "nome_selector": 'input[data-test="name"]',
         "salvar_selector": 'button[type="submit"]',
         "menu_selector": 'a[href="#/customers"]',
-        "nome_servidor": "Top Cine Revo",
-        "regex_plano": r"Teste - completo c/ adultos 6h"
+        "nome_servidor": "UFO PLAY",
+        "regex_plano": r"6 HORAS TESTE COM" 
+    },
+    "SLIM": {
+        "url": "https://painelslim.site/#/sign-in",
+        "usuario": os.getenv("SLIM_USER"),
+        "senha": os.getenv("SLIM_PASS"),
+        "server_selector": 'div[data-test="server_id"] .el-select__wrapper',
+        "plan_selector": 'div[data-test="package_id"] .el-select__wrapper',
+        "nome_selector": 'input[data-test="name"]',
+        "salvar_selector": 'button[type="submit"]',
+        "menu_selector": 'a[href="#/customers"]',
+        "nome_servidor": "IPTV",
+        "regex_plano": r"TESTE 12 HORAS"
+    },
+    "SHAZAM": {
+        "url": "https://shazamplay.com/#/sign-in",
+        "usuario": os.getenv("SHAZAM_USER"),
+        "senha": os.getenv("SHAZAM_PASS"),
+        "server_selector": 'div[data-test="server_id"] .el-select__wrapper',
+        "plan_selector": 'div[data-test="package_id"] .el-select__wrapper',
+        "nome_selector": 'input[data-test="name"]',
+        "salvar_selector": 'button[type="submit"]',
+        "menu_selector": 'a[href="#/customers"]',
+        "nome_servidor": "SHAZAM-PLAY",
+        "regex_plano": r"12 HORAS"
+    },
+    "TIGER": {
+        "url": "https://marinhoserver.click/#/sign-in",
+        "usuario": os.getenv("TIGER_USER"),
+        "senha": os.getenv("TIGER_PASS"),
+        "server_selector": 'div[data-test="server_id"] .el-select__wrapper',
+        "plan_selector": 'div[data-test="package_id"] .el-select__wrapper',
+        "nome_selector": 'input[data-test="name"]',
+        "salvar_selector": 'button[type="submit"]',
+        "menu_selector": 'a[href="#/customers"]',
+        "nome_servidor": "TIGRE AGILE PREMIUM", 
+        "regex_plano": r"TESTE TIGER PREMIUM PADRÃO"
+    },
+    "ADAM": {
+        "url": "https://paineladamplay.com/#/sign-in",
+        "usuario": os.getenv("ADAM_USER"),
+        "senha": os.getenv("ADAM_PASS"),
+        "server_selector": 'div[data-test="server_id"] .el-select__wrapper',
+        "plan_selector": 'div[data-test="package_id"] .el-select__wrapper',
+        "nome_selector": 'input[data-test="name"]',
+        "salvar_selector": 'button[type="submit"]',
+        "menu_selector": 'a[href="#/customers"]',
+        "nome_servidor": "AdamPlay",
+        "regex_plano": r"TESTE GRÁTIS | 12 HORAS | COMPLETO"
     },
     "SPARK": {
         "url": "https://sparkpainel.top/#/dashboard",
@@ -41,10 +87,21 @@ CONFIG_PAINEIS = {
         "menu_selector": 'a[href="#/customers"]',
         "nome_servidor": "SPARK",
         "regex_plano": r"3 Horas Completo"
+    },
+    "TOPCINE": {
+        "url": "https://tv-top-cine.sigmab.pro/#/sign-in",
+        "usuario": os.getenv("TOPCINE_USER"),
+        "senha": os.getenv("TOPCINE_PASS"),
+        "server_selector": 'div[data-test="server_id"] .el-select__wrapper',
+        "plan_selector": 'div[data-test="package_id"] .el-select__wrapper',
+        "nome_selector": 'input[data-test="name"]',
+        "salvar_selector": 'button[type="submit"]',
+        "menu_selector": 'a[href="#/customers"]',
+        "nome_servidor": "Top Cine Revo",
+        "regex_plano": r"Teste - completo c/ adultos 6h"
     }
 }
 
-# Modelo de Dados Esperado na Requisição
 class TesteRequest(BaseModel):
     nome_cliente: str
     servidor_key: str
@@ -86,7 +143,6 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
     return False
 
 async def abortar_recursos_pesados(route: Route):
-    # Deixamos o CSS e Fontes passarem para o Cloudflare e o Vue.js renderizarem os campos
     if route.request.resource_type in ["image", "media"]:
         await route.abort()
     else:
@@ -95,9 +151,8 @@ async def abortar_recursos_pesados(route: Route):
 async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_navegador: bool, max_retries: int = 3):
     cfg = CONFIG_PAINEIS.get(servidor_key.upper())
     if not cfg:
-        return {"sucesso": False, "erro": f"Servidor {servidor_key} não configurado."}
+        return {"sucesso": False, "erro": f"Servidor {servidor_key} não configurado na API."}
 
-    # proxy configurado com as variáveis de ambiente pra ficar mais seguro
     meu_proxy = {
         "server": os.getenv("PROXY_SERVER", "http://gw.dataimpulse.com:823"), 
         "username": os.getenv("PROXY_USER", "2b760a6d25e2df346719__cr.br"), 
@@ -180,21 +235,15 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 return {"sucesso": False, "erro": str(e), "stdout": ""}
             await asyncio.sleep(2)
 
-
-# ==========================================
-# ENDPOINT DA API
-# ==========================================
 @app.post("/gerar-teste-ufo")
 async def api_gerar_teste(payload: TesteRequest):
-    
-    # ---> ADICIONE ESTA LINHA AQUI e dê TAB no que está abaixo dela <---
-    async with fila_espera:
+    async with fila_espera: 
         resultado = await gerar_teste_iptv_async(
             nome_cliente=payload.nome_cliente,
             servidor_key=payload.servidor_key,
             ver_navegador=payload.ver_navegador
         )
-    
+        
     if not resultado.get("sucesso"):
         raise HTTPException(status_code=500, detail=resultado.get("erro"))
         
