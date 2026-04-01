@@ -14,6 +14,8 @@ load_dotenv()
 # Instância da API
 app = FastAPI(title="TVON - API de Automação de Testes IPTV")
 
+fila_espera = asyncio.Semaphore(5)
+
 # Mapeamento de Configurações (Cole as outras configurações aqui depois)
 CONFIG_PAINEIS = {
     "TOPCINE": {
@@ -184,11 +186,14 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
 # ==========================================
 @app.post("/gerar-teste-ufo")
 async def api_gerar_teste(payload: TesteRequest):
-    resultado = await gerar_teste_iptv_async(
-        nome_cliente=payload.nome_cliente,
-        servidor_key=payload.servidor_key,
-        ver_navegador=payload.ver_navegador
-    )
+    
+    # ---> ADICIONE ESTA LINHA AQUI e dê TAB no que está abaixo dela <---
+    async with fila_espera:
+        resultado = await gerar_teste_iptv_async(
+            nome_cliente=payload.nome_cliente,
+            servidor_key=payload.servidor_key,
+            ver_navegador=payload.ver_navegador
+        )
     
     if not resultado.get("sucesso"):
         raise HTTPException(status_code=500, detail=resultado.get("erro"))
