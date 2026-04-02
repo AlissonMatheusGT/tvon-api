@@ -41,12 +41,11 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
     print(f"  [DEBUG] Tentando clicar no dropdown: {selector_dropdown}")
     for iteracao in range(3):
         try:
-            # Espera o dropdown aparecer antes de clicar
-            await page.locator(selector_dropdown).wait_for(state="visible", timeout=10000)
+            # 🩺 CIRURGIA 1: Mais paciência para o dropdown aparecer (De 10s para 15s)
+            await page.locator(selector_dropdown).wait_for(state="visible", timeout=15000)
             await page.locator(selector_dropdown).click(force=True)
-            await asyncio.sleep(1.5) # Dá um tempinho para a animação do dropdown carregar a lista
+            await asyncio.sleep(1.5) 
             
-            # Traz todos os itens do dropdown para o console do Python para a gente ver o que tem lá!
             itens_encontrados = await page.evaluate("""() => {
                 return Array.from(document.querySelectorAll('li.el-select-dropdown__item'))
                             .filter(el => el.offsetParent !== null)
@@ -97,7 +96,8 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=25000) 
                 
                 print("  [DEBUG] Tela acessada. Procurando input de senha...")
-                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=15000)
+                # 🩺 CIRURGIA 2: Mais tolerância no login (De 15s para 20s)
+                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=20000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
                 await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
@@ -111,17 +111,19 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 except PlaywrightTimeoutError: pass
 
                 print("  [DEBUG] Login feito. Clicando no menu de clientes...")
+                # 🩺 CIRURGIA 3: Mais tempo para o menu lateral renderizar e liberar o clique (De 10s para 20s)
                 menu = page.locator(cfg['menu_selector']).first
-                await menu.wait_for(state="attached", timeout=10000)
+                await menu.wait_for(state="attached", timeout=20000)
                 await menu.click(force=True)
                 
+                # 🩺 CIRURGIA 4: Mais tempo para o botão adicionar ficar visível e interativo (De 15s para 20s)
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
-                await add_btn.wait_for(state="visible", timeout=15000)
+                await add_btn.wait_for(state="visible", timeout=20000)
                 await add_btn.click(force=True)
                 
-                # 🛑 A CORREÇÃO PRINCIPAL DE VELOCIDADE:
                 print("  [DEBUG] Botão adicionar clicado! Aguardando a janela modal renderizar...")
-                await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=15000)
+                # 🩺 CIRURGIA 5: Mais tempo para a janela modal surgir (De 15s para 20s)
+                await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=20000)
                 
                 regex_srv = rf"^\s*{re.escape(cfg['nome_servidor'])}\s*$"
                 if not await selecionar_menu_elementui(page, cfg['server_selector'], regex_srv): raise Exception("Servidor não selecionado.")
@@ -156,7 +158,6 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
         except Exception as e:
             print(f"⚠️ Erro na iteração {tentativa}: {str(e)}")
             try:
-                # 📸 TIRA FOTO DO ERRO! Se falhar, ele salva uma foto para a gente saber exatamente onde travou.
                 nome_foto = f"debug_erro_{servidor_key}_tent_{tentativa}.png"
                 await page.screenshot(path=nome_foto, full_page=True)
                 print(f"  [DEBUG] 📸 Foto do erro salva no arquivo: {nome_foto}")
