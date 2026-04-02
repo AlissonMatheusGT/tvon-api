@@ -13,8 +13,8 @@ load_dotenv()
 
 app = FastAPI(title="TVON - API de Automação de Testes IPTV")
 
-# 🛡️ PROTEÇÃO DE MEMÓRIA DA VPS (Máximo 2 navegadores por vez, o resto aguarda na fila)
-fila_espera = asyncio.Semaphore(2) 
+# 🛡️ PROTEÇÃO DE MEMÓRIA DA VPS (Máximo 3 navegadores por vez, o resto aguarda na fila)
+fila_espera = asyncio.Semaphore(3) 
 
 CONFIG_PAINEIS = {
     "UFO": { "url": "https://ufoplay.sigmab.pro/#/sign-in", "usuario": os.getenv("UFO_USER"), "senha": os.getenv("UFO_PASS"), "server_selector": 'div[data-test="server_id"] .el-select__wrapper', "plan_selector": 'div[data-test="package_id"] .el-select__wrapper', "nome_selector": 'input[data-test="name"]', "salvar_selector": 'button[type="submit"]', "menu_selector": 'a[href="#/customers"]', "nome_servidor": "UFO PLAY", "regex_plano": r"6 HORAS TESTE COM" },
