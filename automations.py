@@ -111,12 +111,11 @@ def extract_credentials_robust(text: str) -> Tuple[Optional[str], Optional[str]]
     # Limpa sujeiras visuais e acentuações para facilitar o Regex
     clean_text = re.sub(r'[*_`]', '', text) 
     
-    # Regex super inteligente para pegar a palavra e o código na frente
-    u_match = re.search(r"(?:Usu[aá]rio|User|Login)\s*[:➤-]?\s*([a-zA-Z0-9_]+)", clean_text, re.IGNORECASE)
-    p_match = re.search(r"(?:Senha|Password|Pass)\s*[:➤-]?\s*([a-zA-Z0-9_]+)", clean_text, re.IGNORECASE)
+    # Regex super inteligente, agora blindado contra a palavra "name" no inglês
+    u_match = re.search(r"(?:Usu[aá]rio|Username|User\s*name|User|Login)\s*[:➤-]?\s*([a-zA-Z0-9_]+)", clean_text, re.IGNORECASE)
+    p_match = re.search(r"(?:Senha|Password|Pass\s*word|Pass)\s*[:➤-]?\s*([a-zA-Z0-9_]+)", clean_text, re.IGNORECASE)
     
     return (u_match.group(1) if u_match else None), (p_match.group(1) if p_match else None)
-
 async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: str) -> bool:
     for _ in range(3):
         try:
