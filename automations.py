@@ -14,7 +14,7 @@ load_dotenv()
 app = FastAPI(title="TVON - API de Automação de Testes IPTV")
 
 # 🛡️ PROTEÇÃO DE MEMÓRIA DA VPS (Máximo 3 navegadores por vez, o resto aguarda na fila)
-fila_espera = asyncio.Semaphore(3) 
+fila_espera = asyncio.Semaphore(2) 
 
 CONFIG_PAINEIS = {
     "UFO": { "url": "https://ufoplay.sigmab.pro/#/sign-in", "usuario": os.getenv("UFO_USER"), "senha": os.getenv("UFO_PASS"), "server_selector": 'div[data-test="server_id"] .el-select__wrapper', "plan_selector": 'div[data-test="package_id"] .el-select__wrapper', "nome_selector": 'input[data-test="name"]', "salvar_selector": 'button[type="submit"]', "menu_selector": 'a[href="#/customers"]', "nome_servidor": "UFO PLAY", "regex_plano": r"6 HORAS TESTE COM" },
@@ -79,7 +79,7 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 page.set_default_timeout(20000) # Reduzido para falhar mais rápido e tentar de novo
                 await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=20000) 
                 
-                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=12000)
+                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=25000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
                 await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
@@ -93,7 +93,7 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 except PlaywrightTimeoutError: pass
 
                 menu = page.locator(cfg['menu_selector']).first
-                await menu.wait_for(state="visible")
+                await menu.wait_for(state="attached")
                 await menu.click(force=True)
                 
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
