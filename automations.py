@@ -108,9 +108,13 @@ class TesteRequest(BaseModel):
     ver_navegador: bool = False
 
 def extract_credentials_robust(text: str) -> Tuple[Optional[str], Optional[str]]:
-    clean_text = text.replace("*", "")
-    u_match = re.search(r"(?:Usuário|User|Login)[^a-zA-Z0-9]+([a-zA-Z0-9]+)", clean_text, re.IGNORECASE)
-    p_match = re.search(r"(?:Senha|Password|Pass)[^a-zA-Z0-9]+([a-zA-Z0-9]+)", clean_text, re.IGNORECASE)
+    # Limpa sujeiras visuais e acentuações para facilitar o Regex
+    clean_text = re.sub(r'[*_`]', '', text) 
+    
+    # Regex super inteligente para pegar a palavra e o código na frente
+    u_match = re.search(r"(?:Usu[aá]rio|User|Login)\s*[:➤-]?\s*([a-zA-Z0-9_]+)", clean_text, re.IGNORECASE)
+    p_match = re.search(r"(?:Senha|Password|Pass)\s*[:➤-]?\s*([a-zA-Z0-9_]+)", clean_text, re.IGNORECASE)
+    
     return (u_match.group(1) if u_match else None), (p_match.group(1) if p_match else None)
 
 async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: str) -> bool:
@@ -173,10 +177,11 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 
                 await page.goto(cfg["url"], wait_until="domcontentloaded") 
                 
-                await page.locator('input[type="password"]').wait_for(state="visible", timeout=20000)
+                # CORREÇÃO DO LOGIN: Uso do .first para evitar confusão se houver mais de um input
+                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=20000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
-                await page.locator('input[type="password"]').fill(cfg["senha"])
-                await page.locator('#kt_sign_in_submit').click()
+                await page.locator('input[type="password"]').first.fill(cfg["senha"])
+                await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
 
                 try:
                     await page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), button:has-text("Entendi"), .modal-content').first.wait_for(state="attached", timeout=3500)
@@ -212,14 +217,24 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
 
                 modal_container = page.locator('.modal-body:visible, .el-dialog__body:visible, .swal2-html-container:visible').last
                 await modal_container.wait_for(state="visible", timeout=30000)
-                await asyncio.sleep(3)
                 
-                try:
-                    caixa_texto = modal_container.locator('.pre, pre, [style*="white-space: pre-wrap"]').first
-                    await caixa_texto.wait_for(state="visible", timeout=2000)
-                    txt = await caixa_texto.inner_text()
-                except PlaywrightTimeoutError:
-                    txt = await modal_container.inner_text()
+                # CORREÇÃO DA EXTRAÇÃO: Polling inteligente (espera até o texto carregar)
+                txt = ""
+                for _ in range(15): # Vai verificar a tela a cada 1 segundo (max 15s)
+                    try:
+                        caixa_texto = modal_container.locator('.pre, pre, [style*="white-space: pre-wrap"]').first
+                        if await caixa_texto.is_visible():
+                            txt = await caixa_texto.inner_text()
+                        else:
+                            txt = await modal_container.inner_text()
+                    except Exception:
+                        txt = await modal_container.inner_text()
+                    
+                    # Se encontrou indícios de credencial, sai do loop imediatamente!
+                    if "Usu" in txt or "User" in txt or "Login" in txt or "Senha" in txt:
+                        break
+                    
+                    await asyncio.sleep(1) # Caso não ache, dorme 1s e tenta ler de novo
                 
                 u_iptv, p_iptv = extract_credentials_robust(txt)
 
