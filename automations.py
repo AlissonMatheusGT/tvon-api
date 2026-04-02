@@ -79,7 +79,7 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 page.set_default_timeout(20000) # Reduzido para falhar mais rápido e tentar de novo
                 await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=20000) 
                 
-                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=25000)
+                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=15000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
                 await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
