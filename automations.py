@@ -13,7 +13,7 @@ load_dotenv()
 
 app = FastAPI(title="TVON - API de Automação de Testes IPTV")
 
-# 🛡️ PROTEÇÃO DE MEMÓRIA DA VPS (Máximo 3 navegadores por vez, o resto aguarda na fila)
+# 🛡️ PROTEÇÃO DE MEMÓRIA DA VPS
 fila_espera = asyncio.Semaphore(2) 
 
 CONFIG_PAINEIS = {
@@ -33,18 +33,27 @@ class TesteRequest(BaseModel):
 
 def extract_credentials_robust(text: str) -> Tuple[Optional[str], Optional[str]]:
     clean_text = re.sub(r'[*_`]', '', text) 
-    
-    # 🧠 CORREÇÃO DO BUG "NAME": Ignora palavras inúteis e foca apenas nos números/letras reais
     u_match = re.search(r"(?:Usu[aá]rio|Username|User|Login)\s*[:➤-]?\s*(?:name|nome)?\s*[:➤-]?\s*([a-zA-Z0-9_]{3,})", clean_text, re.IGNORECASE)
     p_match = re.search(r"(?:Senha|Password|Pass\s*word|Pass)\s*[:➤-]?\s*([a-zA-Z0-9_]{3,})", clean_text, re.IGNORECASE)
-    
     return (u_match.group(1) if u_match else None), (p_match.group(1) if p_match else None)
 
 async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: str) -> bool:
-    for _ in range(3):
+    print(f"  [DEBUG] Tentando clicar no dropdown: {selector_dropdown}")
+    for iteracao in range(3):
         try:
+            # Espera o dropdown aparecer antes de clicar
+            await page.locator(selector_dropdown).wait_for(state="visible", timeout=10000)
             await page.locator(selector_dropdown).click(force=True)
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.5) # Dá um tempinho para a animação do dropdown carregar a lista
+            
+            # Traz todos os itens do dropdown para o console do Python para a gente ver o que tem lá!
+            itens_encontrados = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('li.el-select-dropdown__item'))
+                            .filter(el => el.offsetParent !== null)
+                            .map(el => el.innerText.trim());
+            }""")
+            print(f"  [DEBUG] Itens lidos na tela (Tentativa {iteracao+1}): {itens_encontrados}")
+
             encontrou = await page.evaluate(f"""(regexStr) => {{
                 let regex = new RegExp(regexStr, 'i');
                 let items = Array.from(document.querySelectorAll('li.el-select-dropdown__item')).filter(el => el.offsetParent !== null); 
@@ -52,9 +61,17 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
                     if (regex.test(el.innerText)) {{ el.scrollIntoView({{block: 'center'}}); el.click(); return true; }}
                 }} return false;
             }}""", regex_busca)
-            if encontrou: await asyncio.sleep(1); return True
-            else: await page.keyboard.press("Escape"); await asyncio.sleep(1)
-        except Exception: pass
+            
+            if encontrou: 
+                print(f"  [DEBUG] ✅ Sucesso! Encontrou correspondência para '{regex_busca}'")
+                await asyncio.sleep(1)
+                return True
+            else: 
+                print(f"  [DEBUG] ❌ Não achou '{regex_busca}'. Fechando menu e tentando de novo...")
+                await page.keyboard.press("Escape")
+                await asyncio.sleep(1)
+        except Exception as e: 
+            print(f"  [DEBUG] Erro interno no dropdown: {str(e)}")
     return False
 
 async def abortar_recursos_pesados(route: Route):
@@ -65,7 +82,7 @@ async def abortar_recursos_pesados(route: Route):
 
 async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_navegador: bool, max_retries: int = 3):
     cfg = CONFIG_PAINEIS.get(servidor_key.upper())
-    if not cfg: return {"sucesso": False, "erro": f"Servidor {servidor_key} não configurado na API."}
+    if not cfg: return {"sucesso": False, "erro": f"Servidor {servidor_key} não configurado."}
 
     meu_proxy = {"server": os.getenv("PROXY_SERVER", "http://gw.dataimpulse.com:823"), "username": os.getenv("PROXY_USER", "2b760a6d25e2df346719__cr.br"), "password": os.getenv("PROXY_PASS", "abed057c1ea9b9f1")}
 
@@ -76,41 +93,49 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 page = await browser.new_page()
                 if not ver_navegador: await page.route("**/*", abortar_recursos_pesados)
                 
-                page.set_default_timeout(20000) # Reduzido para falhar mais rápido e tentar de novo
-                await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=20000) 
+                page.set_default_timeout(25000) 
+                await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=25000) 
                 
+                print("  [DEBUG] Tela acessada. Procurando input de senha...")
                 await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=15000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
                 await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
 
                 try:
-                    await page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), .modal-content').first.wait_for(state="attached", timeout=3000)
+                    await page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), .modal-content').first.wait_for(state="attached", timeout=4000)
                     await page.keyboard.press("Escape")
                     botoes_alerta = page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), button:has-text("Entendi")')
                     for i in range(await botoes_alerta.count()):
                         if await botoes_alerta.nth(i).is_visible(): await botoes_alerta.nth(i).click(force=True)
                 except PlaywrightTimeoutError: pass
 
+                print("  [DEBUG] Login feito. Clicando no menu de clientes...")
                 menu = page.locator(cfg['menu_selector']).first
-                await menu.wait_for(state="attached")
+                await menu.wait_for(state="attached", timeout=10000)
                 await menu.click(force=True)
                 
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
-                await add_btn.wait_for(state="visible")
+                await add_btn.wait_for(state="visible", timeout=15000)
                 await add_btn.click(force=True)
+                
+                # 🛑 A CORREÇÃO PRINCIPAL DE VELOCIDADE:
+                print("  [DEBUG] Botão adicionar clicado! Aguardando a janela modal renderizar...")
+                await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=15000)
                 
                 regex_srv = rf"^\s*{re.escape(cfg['nome_servidor'])}\s*$"
                 if not await selecionar_menu_elementui(page, cfg['server_selector'], regex_srv): raise Exception("Servidor não selecionado.")
                 if not await selecionar_menu_elementui(page, cfg['plan_selector'], cfg['regex_plano']): raise Exception("Plano não selecionado.")
 
+                print("  [DEBUG] Preenchendo nome...")
                 nome_input = page.locator(cfg['nome_selector'])
                 await nome_input.wait_for(state="visible")
                 await nome_input.fill(nome_cliente)
                 await page.locator(cfg['salvar_selector']).click(force=True)
 
+                print("  [DEBUG] Botão salvar clicado. Extraindo dados...")
                 modal_container = page.locator('.modal-body:visible, .el-dialog__body:visible, .swal2-html-container:visible').last
-                await modal_container.wait_for(state="visible", timeout=15000)
+                await modal_container.wait_for(state="visible", timeout=20000)
                 
                 txt = ""
                 for _ in range(15):
@@ -130,6 +155,13 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
 
         except Exception as e:
             print(f"⚠️ Erro na iteração {tentativa}: {str(e)}")
+            try:
+                # 📸 TIRA FOTO DO ERRO! Se falhar, ele salva uma foto para a gente saber exatamente onde travou.
+                nome_foto = f"debug_erro_{servidor_key}_tent_{tentativa}.png"
+                await page.screenshot(path=nome_foto, full_page=True)
+                print(f"  [DEBUG] 📸 Foto do erro salva no arquivo: {nome_foto}")
+            except: pass
+            
             if tentativa == max_retries: return {"sucesso": False, "erro": str(e), "stdout": ""}
             await asyncio.sleep(1)
 
