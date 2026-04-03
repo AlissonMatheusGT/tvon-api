@@ -148,24 +148,44 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await page.locator(cfg['salvar_selector']).click(force=True) 
 
                 print("  [DEBUG] Botão salvar clicado. Extraindo dados...")
-                modal_container = page.locator('.modal-body:visible, .el-dialog__body:visible, .swal2-html-container:visible').last
-                await modal_container.wait_for(state="visible", timeout=20000)
                 
+                # NOVO LOOP DE EXTRAÇÃO: Silencioso, blindado contra TimeoutError e Race Conditions
                 txt = ""
-                for _ in range(15):
-                    try:
-                        caixa_texto = modal_container.locator('.pre, pre, [style*="white-space: pre-wrap"]').first
-                        txt = await caixa_texto.inner_text() if await caixa_texto.is_visible() else await modal_container.inner_text()
-                    except Exception:
-                        txt = await modal_container.inner_text()
-                    if "Usu" in txt or "User" in txt or "Login" in txt or "Senha" in txt: break
-                    await asyncio.sleep(1)
+                u_iptv, p_iptv = None, None
                 
-                u_iptv, p_iptv = extract_credentials_robust(txt)
+                for _ in range(25): # Tenta achar a senha por até 25 segundos
+                    try:
+                        # Varre todos os containers de texto possíveis na tela
+                        containers = page.locator('.swal2-html-container, .el-message-box__content, .el-dialog__body, .modal-body, pre, .toast-message')
+                        count = await containers.count()
+                        
+                        for i in range(count):
+                            cont = containers.nth(i)
+                            if await cont.is_visible():
+                                temp_txt = await cont.inner_text()
+                                
+                                # Testa se o texto tem login e senha
+                                u_test, p_test = extract_credentials_robust(temp_txt)
+                                
+                                # Se o Regex pegou um usuário válido, achamos o pop-up certo!
+                                if u_test and len(u_test) >= 3:
+                                    txt = temp_txt
+                                    u_iptv, p_iptv = u_test, p_test
+                                    break
+                    except Exception:
+                        pass # Ignora erros de animação do painel e tenta de novo
+                        
+                    if u_iptv: # Sai do loop principal se já achou
+                        break
+                        
+                    await asyncio.sleep(1) # Dorme 1s e escaneia a tela de novo
+                
+                # Resposta Final da Extração
                 if u_iptv and len(u_iptv) >= 3:
                     print(f"✅ Sucesso! Usuário: {u_iptv}")
                     return {"sucesso": True, "stdout": txt, "user": u_iptv, "pass": p_iptv}
-                else: raise Exception("Falha na extração das credenciais (painel demorou).")
+                else: 
+                    raise Exception("Falha na extração das credenciais (painel demorou muito ou falhou).")
 
         except Exception as e:
             print(f"⚠️ Erro na iteração {tentativa}: {str(e)}")
