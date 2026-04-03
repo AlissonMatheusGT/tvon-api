@@ -106,9 +106,8 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
                 
                 # PREVENÇÃO 2: Aguardar o painel realmente navegar após o login
-                # Clicamos no login e aguardamos a URL mudar (ou esperamos um tempo extra)
-                async with page.expect_url("**/dashboard**", timeout=20000):
-                    await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
+                await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
+                await page.wait_for_url("**/dashboard**", timeout=20000)
 
                 try:
                     await page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), .modal-content').first.wait_for(state="visible", timeout=5000)
