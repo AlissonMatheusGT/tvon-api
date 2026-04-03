@@ -41,10 +41,9 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
     print(f"  [DEBUG] Tentando clicar no dropdown: {selector_dropdown}")
     for iteracao in range(3):
         try:
-            # 🩺 CIRURGIA 1: Mais paciência para o dropdown aparecer (De 10s para 15s)
-            await page.locator(selector_dropdown).wait_for(state="visible", timeout=15000)
+            await page.locator(selector_dropdown).wait_for(state="visible", timeout=20000)
             await page.locator(selector_dropdown).click(force=True)
-            await asyncio.sleep(1.5) 
+            await asyncio.sleep(2) 
             
             itens_encontrados = await page.evaluate("""() => {
                 return Array.from(document.querySelectorAll('li.el-select-dropdown__item'))
@@ -88,7 +87,9 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
     for tentativa in range(1, max_retries + 1):
         try:
             print(f"🚀 Iniciando geração em {servidor_key} (Tentativa {tentativa})...")
-            async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=True) as browser:
+            
+            # PREVENÇÃO 3: Forçar Viewport Desktop para garantir que o menu lateral sempre exista
+            async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=True, viewport={"width": 1366, "height": 768}) as browser:
                 page = await browser.new_page()
                 if not ver_navegador: await page.route("**/*", abortar_recursos_pesados)
                 
@@ -96,33 +97,46 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=25000) 
                 
                 print("  [DEBUG] Tela acessada. Procurando input de senha...")
-                # 🩺 CIRURGIA 2: Mais tolerância no login (De 15s para 20s)
                 await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=20000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
-                await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
+                
+                # PREVENÇÃO 2: Aguardar o painel realmente navegar após o login
+                # Clicamos no login e aguardamos a URL mudar (ou esperamos um tempo extra)
+                async with page.expect_url("**/dashboard**", timeout=20000):
+                    await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
 
                 try:
-                    await page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), .modal-content').first.wait_for(state="attached", timeout=4000)
+                    await page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), .modal-content').first.wait_for(state="visible", timeout=5000)
                     await page.keyboard.press("Escape")
                     botoes_alerta = page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), button:has-text("Entendi")')
                     for i in range(await botoes_alerta.count()):
-                        if await botoes_alerta.nth(i).is_visible(): await botoes_alerta.nth(i).click(force=True)
-                except PlaywrightTimeoutError: pass
+                        if await botoes_alerta.nth(i).is_visible(): 
+                            await botoes_alerta.nth(i).click(force=True)
+                except PlaywrightTimeoutError: 
+                    pass
 
                 print("  [DEBUG] Login feito. Clicando no menu de clientes...")
-                # 🩺 CIRURGIA 3: Mais tempo para o menu lateral renderizar e liberar o clique (De 10s para 20s)
                 menu = page.locator(cfg['menu_selector']).first
-                await menu.wait_for(state="attached", timeout=20000)
-                await menu.click(force=True)
+                # Alterado de "attached" para "visible". Se não estiver visível, o clique falha.
+                await menu.wait_for(state="visible", timeout=20000)
+                await menu.click() # Removido o force=True
                 
-                # 🩺 CIRURGIA 4: Mais tempo para o botão adicionar ficar visível e interativo (De 15s para 20s)
+                print("  [DEBUG] Menu clicado. Aguardando a página de clientes estabilizar...")
+                # PREVENÇÃO 1: Remover force=True do Adicionar e garantir que não há overlay
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
                 await add_btn.wait_for(state="visible", timeout=20000)
-                await add_btn.click(force=True)
+                
+                # Pequeno delay para painéis pesados renderizarem os Event Listeners (Vue/React)
+                await asyncio.sleep(1.5) 
+                
+                # Clica como um humano. Se falhar, o Playwright avisa (ao invés de clicar no vazio)
+                await add_btn.click() 
                 
                 print("  [DEBUG] Botão adicionar clicado! Aguardando a janela modal renderizar...")
-                # 🩺 CIRURGIA 5: Mais tempo para a janela modal surgir (De 15s para 20s)
+                # Adicionamos uma verificação da própria modal/dialog antes de procurar o dropdown
+                await page.locator('.modal-dialog:visible, .el-dialog:visible').first.wait_for(state="visible", timeout=15000)
+                
                 await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=20000)
                 
                 regex_srv = rf"^\s*{re.escape(cfg['nome_servidor'])}\s*$"
@@ -133,11 +147,12 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 nome_input = page.locator(cfg['nome_selector'])
                 await nome_input.wait_for(state="visible")
                 await nome_input.fill(nome_cliente)
-                await page.locator(cfg['salvar_selector']).click(force=True)
+                await page.locator(cfg['salvar_selector']).click() # Removido o force=True
 
                 print("  [DEBUG] Botão salvar clicado. Extraindo dados...")
                 modal_container = page.locator('.modal-body:visible, .el-dialog__body:visible, .swal2-html-container:visible').last
                 await modal_container.wait_for(state="visible", timeout=20000)
+                
                 
                 txt = ""
                 for _ in range(15):
@@ -164,7 +179,7 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
             except: pass
             
             if tentativa == max_retries: return {"sucesso": False, "erro": str(e), "stdout": ""}
-            await asyncio.sleep(1)
+            await asyncio.sleep(1.5)
 
 @app.post("/gerar-teste-ufo")
 async def api_gerar_teste(payload: TesteRequest):
