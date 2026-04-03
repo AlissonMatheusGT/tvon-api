@@ -89,8 +89,12 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
             print(f"🚀 Iniciando geração em {servidor_key} (Tentativa {tentativa})...")
             
             # PREVENÇÃO 3: Forçar Viewport Desktop para garantir que o menu lateral sempre exista
-            async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=True, viewport={"width": 1366, "height": 768}) as browser:
+            async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=True) as browser:
                 page = await browser.new_page()
+                
+                # ADICIONADO AQUI: Força a tela de desktop
+                await page.set_viewport_size({"width": 1366, "height": 768})
+                
                 if not ver_navegador: await page.route("**/*", abortar_recursos_pesados)
                 
                 page.set_default_timeout(25000) 
