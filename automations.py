@@ -110,9 +110,20 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await page.wait_for_url("**/dashboard**", timeout=20000)
 
                 try:
-                    await page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), .modal-content').first.wait_for(state="visible", timeout=5000)
+                    # Incluímos o #noticeModal na busca
+                    modal_aviso = page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), .modal-content, #noticeModal').first
+                    await modal_aviso.wait_for(state="visible", timeout=5000)
+                    
+                    # 1. Tenta apertar ESC (fecha a maioria das modais)
                     await page.keyboard.press("Escape")
-                    botoes_alerta = page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), button:has-text("Entendi")')
+                    await asyncio.sleep(0.5)
+                    
+                    # 2. Simula o clique "fora" da modal (canto superior esquerdo da tela)
+                    await page.mouse.click(10, 10)
+                    await asyncio.sleep(0.5)
+                    
+                    # 3. Caça os botões, agora com "OK" como prioridade
+                    botoes_alerta = page.locator('button:has-text("OK"), button:has-text("Ocultar"), button:has-text("Ciente"), button:has-text("Entendi"), button:has-text("Fechar"), .btn-close, .close')
                     for i in range(await botoes_alerta.count()):
                         if await botoes_alerta.nth(i).is_visible(): 
                             await botoes_alerta.nth(i).click(force=True)
