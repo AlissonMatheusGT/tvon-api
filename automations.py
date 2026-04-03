@@ -88,11 +88,10 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
         try:
             print(f"🚀 Iniciando geração em {servidor_key} (Tentativa {tentativa})...")
             
-            # PREVENÇÃO 3: Forçar Viewport Desktop para garantir que o menu lateral sempre exista
             async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=True) as browser:
                 page = await browser.new_page()
                 
-                # ADICIONADO AQUI: Força a tela de desktop
+                # Mantido: Força a tela de desktop (previne falhas do Camoufox)
                 await page.set_viewport_size({"width": 1366, "height": 768})
                 
                 if not ver_navegador: await page.route("**/*", abortar_recursos_pesados)
@@ -105,52 +104,35 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
                 
-                # PREVENÇÃO 2: Aguardar o painel realmente navegar após o login
                 await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
                 await page.wait_for_url("**/dashboard**", timeout=20000)
 
+                # FORÇA BRUTA: Destruir qualquer modal que aparecer via JavaScript
                 try:
-                    # Incluímos o #noticeModal na busca
-                    modal_aviso = page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), .modal-content, #noticeModal').first
-                    await modal_aviso.wait_for(state="visible", timeout=5000)
-                    
-                    # 1. Tenta apertar ESC (fecha a maioria das modais)
-                    await page.keyboard.press("Escape")
-                    await asyncio.sleep(0.5)
-                    
-                    # 2. Simula o clique "fora" da modal (canto superior esquerdo da tela)
-                    await page.mouse.click(10, 10)
-                    await asyncio.sleep(0.5)
-                    
-                    # 3. Caça os botões, agora com "OK" como prioridade
-                    botoes_alerta = page.locator('button:has-text("OK"), button:has-text("Ocultar"), button:has-text("Ciente"), button:has-text("Entendi"), button:has-text("Fechar"), .btn-close, .close')
-                    for i in range(await botoes_alerta.count()):
-                        if await botoes_alerta.nth(i).is_visible(): 
-                            await botoes_alerta.nth(i).click(force=True)
-                except PlaywrightTimeoutError: 
+                    await page.evaluate("""() => {
+                        document.querySelectorAll('.modal, .modal-backdrop').forEach(el => el.remove());
+                    }""")
+                except:
                     pass
 
                 print("  [DEBUG] Login feito. Clicando no menu de clientes...")
                 menu = page.locator(cfg['menu_selector']).first
-                # Alterado de "attached" para "visible". Se não estiver visível, o clique falha.
-                await menu.wait_for(state="visible", timeout=20000)
-                await menu.click() # Removido o force=True
+                await menu.wait_for(state="attached", timeout=20000)
+                
+                # VOLTOU O FORCE=TRUE (Modo Trator ativado)
+                await menu.click(force=True) 
                 
                 print("  [DEBUG] Menu clicado. Aguardando a página de clientes estabilizar...")
-                # PREVENÇÃO 1: Remover force=True do Adicionar e garantir que não há overlay
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
-                await add_btn.wait_for(state="visible", timeout=20000)
+                await add_btn.wait_for(state="attached", timeout=20000)
                 
-                # Pequeno delay para painéis pesados renderizarem os Event Listeners (Vue/React)
                 await asyncio.sleep(1.5) 
                 
-                # Clica como um humano. Se falhar, o Playwright avisa (ao invés de clicar no vazio)
-                await add_btn.click() 
+                # VOLTOU O FORCE=TRUE
+                await add_btn.click(force=True) 
                 
                 print("  [DEBUG] Botão adicionar clicado! Aguardando a janela modal renderizar...")
-                # Adicionamos uma verificação da própria modal/dialog antes de procurar o dropdown
-                await page.locator('.modal-dialog:visible, .el-dialog:visible').first.wait_for(state="visible", timeout=15000)
-                
+                # Procuramos o server_selector na força bruta com timeout menor, pq o force=True pode falhar na 1ª e a gente retenta rápido
                 await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=20000)
                 
                 regex_srv = rf"^\s*{re.escape(cfg['nome_servidor'])}\s*$"
@@ -161,12 +143,13 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 nome_input = page.locator(cfg['nome_selector'])
                 await nome_input.wait_for(state="visible")
                 await nome_input.fill(nome_cliente)
-                await page.locator(cfg['salvar_selector']).click() # Removido o force=True
+                
+                # VOLTOU O FORCE=TRUE
+                await page.locator(cfg['salvar_selector']).click(force=True) 
 
                 print("  [DEBUG] Botão salvar clicado. Extraindo dados...")
                 modal_container = page.locator('.modal-body:visible, .el-dialog__body:visible, .swal2-html-container:visible').last
                 await modal_container.wait_for(state="visible", timeout=20000)
-                
                 
                 txt = ""
                 for _ in range(15):
