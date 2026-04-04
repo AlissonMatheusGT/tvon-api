@@ -34,11 +34,10 @@ class TesteRequest(BaseModel):
 def extract_credentials_robust(text: str) -> Tuple[Optional[str], Optional[str]]:
     clean_text = re.sub(r'[*_`]', '', text) 
     u_match = re.search(r"(?:Usu[aá]rio|Username|User|Login)\s*[:➤-]?\s*(?:name|nome)?\s*[:➤-]?\s*([a-zA-Z0-9_]{3,})", clean_text, re.IGNORECASE)
-    p_match = re.search(r"(?:Senha|Password|Pass\s*word|Pass)\s*[:➤-]?\s*([a-zA-Z0-9_]{3,})", clean_text, re.IGNORECASE)
+    p_match = re.search(r"(?:Senha|Password|Pass\s*word|Pass)\s*[:➤-]?\s*(?:name|nome)?\s*[:➤-]?\s*([a-zA-Z0-9_]{3,})", clean_text, re.IGNORECASE)
     return (u_match.group(1) if u_match else None), (p_match.group(1) if p_match else None)
 
 async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: str) -> bool:
-    print(f"  [DEBUG] Tentando clicar no dropdown: {selector_dropdown}")
     for iteracao in range(3):
         try:
             await page.locator(selector_dropdown).wait_for(state="visible", timeout=20000)
@@ -61,11 +60,9 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
             }}""", regex_busca)
             
             if encontrou: 
-                print(f"  [DEBUG] ✅ Sucesso! Encontrou correspondência para '{regex_busca}'")
                 await asyncio.sleep(1)
                 return True
             else: 
-                print(f"  [DEBUG] ❌ Não achou '{regex_busca}'. Fechando menu e tentando de novo...")
                 await page.keyboard.press("Escape")
                 await asyncio.sleep(1)
         except Exception as e: 
@@ -76,52 +73,50 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
     cfg = CONFIG_PAINEIS.get(servidor_key.upper())
     if not cfg: return {"sucesso": False, "erro": f"Servidor {servidor_key} não configurado."}
 
-    # 💉 CIRURGIA DE PROXY: Extraindo dados da PROXY_URL para o formato compatível com Camoufox
+    # 🔧 AJUSTE DE PROXY: Extração obrigatória para evitar NS_ERROR_PROXY_CONNECTION_REFUSED
     url_do_proxy = os.getenv("PROXY_URL")
     meu_proxy = None
-
     if url_do_proxy:
         try:
-            # Quebra a URL: http://usuario:senha@gw.dataimpulse.com:823
-            clean_url = url_do_proxy.replace("http://", "").replace("https://", "")
-            auth, address = clean_url.split("@")
-            user, password = auth.split(":")
-            
+            clean = url_do_proxy.replace("http://", "").replace("https://", "")
+            auth, addr = clean.split("@")
+            user, pwd = auth.split(":")
             meu_proxy = {
-                "server": f"http://{address}",
+                "server": f"http://{addr}",
                 "username": user,
-                "password": password
+                "password": pwd
             }
-            print(f"  [DEBUG] Proxy autenticado configurado para: {address}") #
-        except Exception as e:
-            print(f"  [DEBUG] Falha ao processar PROXY_URL, usando formato simples: {e}")
+            print(f"  [DEBUG] Proxy autenticado pronto para: {addr}")
+        except Exception:
             meu_proxy = {"server": url_do_proxy}
 
     for tentativa in range(1, max_retries + 1):
         try:
             print(f"🚀 Iniciando geração em {servidor_key} (Tentativa {tentativa})...")
             
-            # GeoIP=False para evitar latência excessiva em proxies residenciais
-            async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=False) as browser:
+            # 🚀 AJUSTE 1: geoip=True para sincronizar fuso horário e evitar bloqueios
+            async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=True) as browser:
                 page = await browser.new_page()
                 await page.set_viewport_size({"width": 1366, "height": 768})
                 
-                # Timeout estendido para 40s (Proxies residenciais oscilam muito no início)
-                page.set_default_timeout(40000) 
-                await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=40000) 
+                # 🚀 AJUSTE 2: wait_until="networkidle" para garantir que o Captcha invisível carregue
+                page.set_default_timeout(60000) 
+                await page.goto(cfg["url"], wait_until="networkidle", timeout=60000) 
                 
                 print("  [DEBUG] Tela acessada. Procurando input de senha...")
-                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=35000)
+                
+                # 🚀 AJUSTE 3: Timeout de 45s para compensar latência do proxy residencial
+                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=45000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
                 
                 await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
-                await page.wait_for_url("**/dashboard**", timeout=20000)
+                await page.wait_for_url("**/dashboard**", timeout=30000)
 
-                # Limpeza de Modais
+                # Limpar Modais
                 try:
                     await page.evaluate("""() => {
-                        document.querySelectorAll('.modal, .modal-backdrop').forEach(el => el.remove());
+                        document.querySelectorAll('.modal, .modal-backdrop, .el-overlay').forEach(el => el.remove());
                     }""")
                 except: pass
 
@@ -130,13 +125,13 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await menu.wait_for(state="attached", timeout=20000)
                 await menu.click(force=True) 
                 
-                print("  [DEBUG] Menu clicado. Aguardando a página de clientes estabilizar...")
+                print("  [DEBUG] Menu clicado. Aguardando botão adicionar...")
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
                 await add_btn.wait_for(state="attached", timeout=20000)
                 await asyncio.sleep(1.5) 
                 await add_btn.click(force=True) 
                 
-                print("  [DEBUG] Botão adicionar clicado! Aguardando a janela modal renderizar...")
+                print("  [DEBUG] Botão adicionar clicado! Aguardando modal...")
                 await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=20000)
                 
                 regex_srv = rf"^\s*{re.escape(cfg['nome_servidor'])}\s*$"
@@ -150,7 +145,6 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await page.locator(cfg['salvar_selector']).click(force=True) 
 
                 print("  [DEBUG] Botão salvar clicado. Extraindo dados...")
-                
                 txt, u_iptv, p_iptv = "", None, None
                 for _ in range(25): 
                     try:
@@ -168,11 +162,11 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                     if u_iptv: break
                     await asyncio.sleep(1) 
                 
-                if u_iptv and len(u_iptv) >= 3:
+                if u_iptv:
                     print(f"✅ Sucesso! Usuário: {u_iptv}")
                     return {"sucesso": True, "stdout": txt, "user": u_iptv, "pass": p_iptv}
                 else: 
-                    raise Exception("Falha na extração das credenciais.")
+                    raise Exception("Falha na extração final das credenciais.")
 
         except Exception as e:
             print(f"⚠️ Erro na iteração {tentativa}: {str(e)}")
@@ -180,9 +174,8 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 nome_foto = f"debug_erro_{servidor_key}_tent_{tentativa}.png"
                 await page.screenshot(path=nome_foto, full_page=True)
             except: pass
-            
             if tentativa == max_retries: return {"sucesso": False, "erro": str(e), "stdout": ""}
-            await asyncio.sleep(1.5)
+            await asyncio.sleep(2)
 
 @app.post("/gerar-teste-ufo")
 async def api_gerar_teste(payload: TesteRequest):
