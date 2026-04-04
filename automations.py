@@ -39,8 +39,9 @@ def extract_credentials_robust(text: str) -> Tuple[Optional[str], Optional[str]]
 async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: str) -> bool:
     for iteracao in range(3):
         try:
+            # Mantemos o visible aqui porque o Element UI precisa montar o CSS do dropdown antes do clique
             await page.locator(selector_dropdown).wait_for(state="visible", timeout=20000)
-            await page.locator(selector_dropdown).click(force=True)
+            await page.locator(selector_dropdown).evaluate("el => el.click()") # ⚡ Clique JS
             await asyncio.sleep(1.5) 
             itens_encontrados = await page.evaluate("""() => {
                 return Array.from(document.querySelectorAll('li.el-select-dropdown__item')).filter(el => el.offsetParent !== null).map(el => el.innerText.trim());
@@ -81,29 +82,36 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=35000) 
                 
                 print("  [DEBUG] Tela acessada. Procurando input de senha...")
-                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=25000)
+                # ⚡ MODO NINJA: ATTACHED
+                await page.locator('input[type="password"]').first.wait_for(state="attached", timeout=25000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
-                await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
+                # ⚡ MODO NINJA: CLIQUE JS
+                await page.locator('#kt_sign_in_submit, button[type="submit"]').first.evaluate("el => el.click()")
 
-                # 🩺 VOLTOU A LÓGICA DE LIMPEZA GENTIL (DO v7) + FORÇA BRUTA
+                # 🩺 LÓGICA DE LIMPEZA GENTIL + FORÇA BRUTA
                 try:
                     await asyncio.sleep(2)
                     botoes_alerta = page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), button:has-text("Entendi")')
                     for i in range(await botoes_alerta.count()):
-                        if await botoes_alerta.nth(i).is_visible(): await botoes_alerta.nth(i).click(force=True)
+                        # ⚡ MODO NINJA: CLIQUE JS
+                        if await botoes_alerta.nth(i).is_visible(): await botoes_alerta.nth(i).evaluate("el => el.click()")
                     await page.evaluate("""() => { document.querySelectorAll('.modal, .modal-backdrop, .el-overlay').forEach(el => el.remove()); }""")
                 except: pass
 
                 print("  [DEBUG] Login feito. Clicando no menu de clientes...")
                 menu = page.locator(cfg['menu_selector']).first
+                # ⚡ MODO NINJA: ATTACHED
                 await menu.wait_for(state="attached", timeout=20000)
-                await menu.click(force=True) 
+                # ⚡ MODO NINJA: CLIQUE JS
+                await menu.evaluate("el => el.click()") 
                 
                 print("  [DEBUG] Menu clicado. Aguardando botão adicionar...")
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
+                # ⚡ MODO NINJA: ATTACHED
                 await add_btn.wait_for(state="attached", timeout=20000)
-                await add_btn.click(force=True) 
+                # ⚡ MODO NINJA: CLIQUE JS
+                await add_btn.evaluate("el => el.click()") 
                 
                 print("  [DEBUG] Botão adicionar clicado! Selecionando servidor...")
                 await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=20000)
@@ -114,9 +122,11 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
 
                 print("  [DEBUG] Preenchendo nome...")
                 nome_input = page.locator(cfg['nome_selector'])
-                await nome_input.wait_for(state="visible")
+                # ⚡ MODO NINJA: ATTACHED
+                await nome_input.wait_for(state="attached")
                 await nome_input.fill(nome_cliente)
-                await page.locator(cfg['salvar_selector']).click(force=True) 
+                # ⚡ MODO NINJA: CLIQUE JS
+                await page.locator(cfg['salvar_selector']).evaluate("el => el.click()") 
 
                 print("  [DEBUG] Extraindo dados...")
                 txt, u_iptv, p_iptv = "", None, None
