@@ -72,11 +72,8 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
             print(f"  [DEBUG] Erro interno no dropdown: {str(e)}")
     return False
 
-async def abortar_recursos_pesados(route: Route):
-    if route.request.resource_type in ["image", "media", "font"]:
-        await route.abort()
-    else:
-        await route.continue_()
+# ⚠️ REMOVIDO: BLOQUEIO DE RECURSOS PARA EVITAR QUEBRA DA UI
+# async def abortar_recursos_pesados(route: Route): ...
 
 async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_navegador: bool, max_retries: int = 3):
     cfg = CONFIG_PAINEIS.get(servidor_key.upper())
@@ -89,51 +86,47 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
         try:
             print(f"🚀 Iniciando geração em {servidor_key} (Tentativa {tentativa})...")
             
-            async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=True) as browser:
+            # 🚀 AJUSTE 1: GEOIP=FALSE PARA INICIALIZAÇÃO INSTANTÂNEA
+            async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=False) as browser:
                 page = await browser.new_page()
                 
-                # Mantido: Força a tela de desktop (previne falhas do Camoufox)
                 await page.set_viewport_size({"width": 1366, "height": 768})
                 
-                if not ver_navegador: await page.route("**/*", abortar_recursos_pesados)
+                # 🚀 AJUSTE 2: REMOVIDO O ROUTE ABORT (Priorizar carregamento completo)
+                # if not ver_navegador: await page.route("**/*", abortar_recursos_pesados)
                 
-                page.set_default_timeout(25000) 
-                await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=25000) 
+                page.set_default_timeout(40000) # Aumentado para 40s total
+                await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=40000) 
                 
                 print("  [DEBUG] Tela acessada. Procurando input de senha...")
-                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=20000)
+                
+                # 🚀 AJUSTE 3: AUMENTADO O TIMEOUT DO INPUT PARA 35S (Proxy residencial oscila muito)
+                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=35000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
                 
                 await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
                 await page.wait_for_url("**/dashboard**", timeout=20000)
 
-                # FORÇA BRUTA: Destruir qualquer modal que aparecer via JavaScript
+                # Destruir modais
                 try:
                     await page.evaluate("""() => {
                         document.querySelectorAll('.modal, .modal-backdrop').forEach(el => el.remove());
                     }""")
-                except:
-                    pass
+                except: pass
 
                 print("  [DEBUG] Login feito. Clicando no menu de clientes...")
                 menu = page.locator(cfg['menu_selector']).first
                 await menu.wait_for(state="attached", timeout=20000)
-                
-                # VOLTOU O FORCE=TRUE (Modo Trator ativado)
                 await menu.click(force=True) 
                 
                 print("  [DEBUG] Menu clicado. Aguardando a página de clientes estabilizar...")
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
                 await add_btn.wait_for(state="attached", timeout=20000)
-                
                 await asyncio.sleep(1.5) 
-                
-                # VOLTOU O FORCE=TRUE
                 await add_btn.click(force=True) 
                 
                 print("  [DEBUG] Botão adicionar clicado! Aguardando a janela modal renderizar...")
-                # Procuramos o server_selector na força bruta com timeout menor, pq o force=True pode falhar na 1ª e a gente retenta rápido
                 await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=20000)
                 
                 regex_srv = rf"^\s*{re.escape(cfg['nome_servidor'])}\s*$"
@@ -145,18 +138,15 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await nome_input.wait_for(state="visible")
                 await nome_input.fill(nome_cliente)
                 
-                # VOLTOU O FORCE=TRUE
                 await page.locator(cfg['salvar_selector']).click(force=True) 
 
                 print("  [DEBUG] Botão salvar clicado. Extraindo dados...")
                 
-                # NOVO LOOP DE EXTRAÇÃO: Silencioso, blindado contra TimeoutError e Race Conditions
                 txt = ""
                 u_iptv, p_iptv = None, None
                 
-                for _ in range(25): # Tenta achar a senha por até 25 segundos
+                for _ in range(25): 
                     try:
-                        # Varre todos os containers de texto possíveis na tela
                         containers = page.locator('.swal2-html-container, .el-message-box__content, .el-dialog__body, .modal-body, pre, .toast-message')
                         count = await containers.count()
                         
@@ -164,36 +154,26 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                             cont = containers.nth(i)
                             if await cont.is_visible():
                                 temp_txt = await cont.inner_text()
-                                
-                                # Testa se o texto tem login e senha
                                 u_test, p_test = extract_credentials_robust(temp_txt)
-                                
-                                # Se o Regex pegou um usuário válido, achamos o pop-up certo!
                                 if u_test and len(u_test) >= 3:
                                     txt = temp_txt
                                     u_iptv, p_iptv = u_test, p_test
                                     break
-                    except Exception:
-                        pass # Ignora erros de animação do painel e tenta de novo
-                        
-                    if u_iptv: # Sai do loop principal se já achou
-                        break
-                        
-                    await asyncio.sleep(1) # Dorme 1s e escaneia a tela de novo
+                    except Exception: pass
+                    if u_iptv: break
+                    await asyncio.sleep(1) 
                 
-                # Resposta Final da Extração
                 if u_iptv and len(u_iptv) >= 3:
                     print(f"✅ Sucesso! Usuário: {u_iptv}")
                     return {"sucesso": True, "stdout": txt, "user": u_iptv, "pass": p_iptv}
                 else: 
-                    raise Exception("Falha na extração das credenciais (painel demorou muito ou falhou).")
+                    raise Exception("Falha na extração das credenciais.")
 
         except Exception as e:
             print(f"⚠️ Erro na iteração {tentativa}: {str(e)}")
             try:
                 nome_foto = f"debug_erro_{servidor_key}_tent_{tentativa}.png"
                 await page.screenshot(path=nome_foto, full_page=True)
-                print(f"  [DEBUG] 📸 Foto do erro salva no arquivo: {nome_foto}")
             except: pass
             
             if tentativa == max_retries: return {"sucesso": False, "erro": str(e), "stdout": ""}
