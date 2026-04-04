@@ -82,7 +82,8 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
     cfg = CONFIG_PAINEIS.get(servidor_key.upper())
     if not cfg: return {"sucesso": False, "erro": f"Servidor {servidor_key} não configurado."}
 
-    meu_proxy = {"server": os.getenv("PROXY_SERVER", "http://gw.dataimpulse.com:823"), "username": os.getenv("PROXY_USER", "2b760a6d25e2df346719__cr.br"), "password": os.getenv("PROXY_PASS", "abed057c1ea9b9f1")}
+    url_do_proxy = os.getenv("PROXY_URL")
+    meu_proxy = {"server": url_do_proxy} if url_do_proxy else None
 
     for tentativa in range(1, max_retries + 1):
         try:
