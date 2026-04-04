@@ -13,7 +13,6 @@ load_dotenv()
 
 app = FastAPI(title="TVON - API de Automação de Testes IPTV")
 
-# 🛡️ PROTEÇÃO DE MEMÓRIA: Alterado para 2 para evitar lentidão e timeouts simultâneos
 fila_espera = asyncio.Semaphore(2) 
 
 CONFIG_PAINEIS = {
@@ -40,9 +39,12 @@ def extract_credentials_robust(text: str) -> Tuple[Optional[str], Optional[str]]
 async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: str) -> bool:
     for iteracao in range(3):
         try:
-            await page.locator(selector_dropdown).wait_for(state="visible", timeout=25000)
+            await page.locator(selector_dropdown).wait_for(state="visible", timeout=20000)
             await page.locator(selector_dropdown).click(force=True)
-            await asyncio.sleep(2) 
+            await asyncio.sleep(1.5) 
+            itens_encontrados = await page.evaluate("""() => {
+                return Array.from(document.querySelectorAll('li.el-select-dropdown__item')).filter(el => el.offsetParent !== null).map(el => el.innerText.trim());
+            }""")
             encontrou = await page.evaluate(f"""(regexStr) => {{
                 let regex = new RegExp(regexStr, 'i');
                 let items = Array.from(document.querySelectorAll('li.el-select-dropdown__item')).filter(el => el.offsetParent !== null); 
@@ -70,38 +72,41 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
     for tentativa in range(1, max_retries + 1):
         try:
             print(f"🚀 Iniciando geração em {servidor_key} (Tentativa {tentativa})...")
-            # 🚀 AJUSTE: geoip=True é OBRIGATÓRIO para evitar bloqueios invisíveis e LeakWarning
             async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=True) as browser:
                 page = await browser.new_page()
                 await page.set_viewport_size({"width": 1366, "height": 768})
                 
-                page.set_default_timeout(45000) 
-                await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=45000) 
+                # ⚡ VOLTOU PARA DOMCONTENTLOADED (IGUAL AO v7) PARA MAIS VELOCIDADE
+                page.set_default_timeout(35000) 
+                await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=35000) 
                 
                 print("  [DEBUG] Tela acessada. Procurando input de senha...")
-                # 🚀 AJUSTE: Timeout de 40s para o input de senha
-                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=40000)
+                await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=25000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
                 await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
 
+                # 🩺 VOLTOU A LÓGICA DE LIMPEZA GENTIL (DO v7) + FORÇA BRUTA
                 try:
                     await asyncio.sleep(2)
+                    botoes_alerta = page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), button:has-text("Entendi")')
+                    for i in range(await botoes_alerta.count()):
+                        if await botoes_alerta.nth(i).is_visible(): await botoes_alerta.nth(i).click(force=True)
                     await page.evaluate("""() => { document.querySelectorAll('.modal, .modal-backdrop, .el-overlay').forEach(el => el.remove()); }""")
                 except: pass
 
                 print("  [DEBUG] Login feito. Clicando no menu de clientes...")
                 menu = page.locator(cfg['menu_selector']).first
-                await menu.wait_for(state="attached", timeout=25000)
+                await menu.wait_for(state="attached", timeout=20000)
                 await menu.click(force=True) 
                 
                 print("  [DEBUG] Menu clicado. Aguardando botão adicionar...")
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
-                await add_btn.wait_for(state="attached", timeout=25000)
+                await add_btn.wait_for(state="attached", timeout=20000)
                 await add_btn.click(force=True) 
                 
                 print("  [DEBUG] Botão adicionar clicado! Selecionando servidor...")
-                await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=25000)
+                await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=20000)
                 
                 regex_srv = rf"^\s*{re.escape(cfg['nome_servidor'])}\s*$"
                 if not await selecionar_menu_elementui(page, cfg['server_selector'], regex_srv): raise Exception("Servidor não selecionado.")
