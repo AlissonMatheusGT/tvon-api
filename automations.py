@@ -57,7 +57,7 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
     return False
 
 async def abortar_recursos_pesados(route: Route):
-    # Aborta o download de imagens, mídias (vídeos/áudio) e fontes.
+    # Aborta o download de imagens, mídias (vídeos/áudio) e fontes para poupar o proxy.
     if route.request.resource_type in ["image", "media", "font"]:
         await route.abort()
     else:
@@ -84,7 +84,11 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 page = await browser.new_page()
                 await page.set_viewport_size({"width": 1366, "height": 768})
                 
-                # ⚡ VOLTOU PARA DOMCONTENTLOADED (IGUAL AO v7) PARA MAIS VELOCIDADE
+                # 🛡️ LIGA O BLOQUEADOR DE IMAGENS/PESADOS (Se estiver a rodar escondido)
+                if not ver_navegador: 
+                    await page.route("**/*", abortar_recursos_pesados)
+                
+                # ⚡ MODO NINJA: DOMCONTENTLOADED
                 page.set_default_timeout(35000) 
                 await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=35000) 
                 
