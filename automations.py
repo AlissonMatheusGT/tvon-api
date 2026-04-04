@@ -40,11 +40,8 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
     for iteracao in range(3):
         try:
             await page.locator(selector_dropdown).wait_for(state="visible", timeout=20000)
-            await page.locator(selector_dropdown).evaluate("el => el.click()") # MODO NINJA JS
+            await page.locator(selector_dropdown).evaluate("el => el.click()") 
             await asyncio.sleep(1.5) 
-            itens_encontrados = await page.evaluate("""() => {
-                return Array.from(document.querySelectorAll('li.el-select-dropdown__item')).filter(el => el.offsetParent !== null).map(el => el.innerText.trim());
-            }""")
             encontrou = await page.evaluate(f"""(regexStr) => {{
                 let regex = new RegExp(regexStr, 'i');
                 let items = Array.from(document.querySelectorAll('li.el-select-dropdown__item')).filter(el => el.offsetParent !== null); 
@@ -55,7 +52,6 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
         except Exception: pass
     return False
 
-# BLOQUEADOR DE IMAGENS E VÍDEOS PARA POUPAR REDE DO PROXY
 async def abortar_recursos_pesados(route: Route):
     if route.request.resource_type in ["image", "media", "font"]:
         await route.abort()
@@ -83,35 +79,38 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 page = await browser.new_page()
                 await page.set_viewport_size({"width": 1366, "height": 768})
                 
-                # Ativa o bloqueador de imagens se não estivermos vendo a tela
                 if not ver_navegador: 
                     await page.route("**/*", abortar_recursos_pesados)
                 
                 page.set_default_timeout(35000) 
                 await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=35000) 
                 
-                print("  [DEBUG] Tela acessada. Procurando input de senha...")
+                # 🧠 INTELIGÊNCIA FAIL-FAST: Checa se tomou bloqueio do Cloudflare imediatamente
+                await asyncio.sleep(1.5) # Dá um tempinho pro texto vermelho aparecer
+                if await page.locator("text='Sorry, you have been blocked'").is_visible() or await page.locator("text='Access denied'").is_visible():
+                    raise Exception("Cloudflare Hard Block detectado neste IP. Trocando de rota...")
+
+                print("  [DEBUG] Tela acessada com sucesso. Procurando input de senha...")
                 
-                # 🛡️ NOVO: MICRO-LOOP DE LOGIN (F5 TÁTICO ANTI-BOT)
+                # Micro-loop normal caso seja só um delay pequeno
                 login_pronto = False
                 for mini_tentativa in range(2):
                     try:
-                        # Espera 15s para a tela de proteção Anti-Bot sair
                         await page.locator('input[type="password"]').first.wait_for(state="attached", timeout=15000)
                         login_pronto = True
                         break 
                     except PlaywrightTimeoutError:
-                        print(f"  [DEBUG] Tela engasgou no Anti-bot. Recarregando a página (F5 - Tentativa {mini_tentativa+1})...")
+                        print(f"  [DEBUG] Tela engasgou. Recarregando a página (F5 - Tentativa {mini_tentativa+1})...")
                         await page.reload(wait_until="domcontentloaded", timeout=30000)
                 
                 if not login_pronto:
-                    raise Exception("A tela de login não carregou nem após o F5. Proxy bloqueado ou instável.")
+                    raise Exception("A tela de login não carregou. Proxy extremamente lento ou bloqueado.")
 
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
-                await page.locator('#kt_sign_in_submit, button[type="submit"]').first.evaluate("el => el.click()") # MODO NINJA JS
+                await page.locator('#kt_sign_in_submit, button[type="submit"]').first.evaluate("el => el.click()")
 
-                # 🩺 LÓGICA DE LIMPEZA GENTIL + FORÇA BRUTA
+                # Limpeza e Cliques (Modo Ninja)
                 try:
                     await asyncio.sleep(2)
                     botoes_alerta = page.locator('button:has-text("Ocultar"), button:has-text("Ciente"), button:has-text("Entendi")')
@@ -123,12 +122,12 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 print("  [DEBUG] Login feito. Clicando no menu de clientes...")
                 menu = page.locator(cfg['menu_selector']).first
                 await menu.wait_for(state="attached", timeout=20000)
-                await menu.evaluate("el => el.click()") # MODO NINJA JS
+                await menu.evaluate("el => el.click()") 
                 
                 print("  [DEBUG] Menu clicado. Aguardando botão adicionar...")
                 add_btn = page.locator("button:has-text('Adicionar'), a:has-text('Adicionar')").first
                 await add_btn.wait_for(state="attached", timeout=20000)
-                await add_btn.evaluate("el => el.click()") # MODO NINJA JS
+                await add_btn.evaluate("el => el.click()") 
                 
                 print("  [DEBUG] Botão adicionar clicado! Selecionando servidor...")
                 await page.locator(cfg['server_selector']).wait_for(state="visible", timeout=20000)
@@ -141,7 +140,7 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 nome_input = page.locator(cfg['nome_selector'])
                 await nome_input.wait_for(state="attached")
                 await nome_input.fill(nome_cliente)
-                await page.locator(cfg['salvar_selector']).evaluate("el => el.click()") # MODO NINJA JS
+                await page.locator(cfg['salvar_selector']).evaluate("el => el.click()") 
 
                 print("  [DEBUG] Extraindo dados...")
                 txt, u_iptv, p_iptv = "", None, None
@@ -166,7 +165,7 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
         except Exception as e:
             print(f"⚠️ Erro na iteração {tentativa}: {str(e)}")
             if tentativa == max_retries: return {"sucesso": False, "erro": str(e), "stdout": ""}
-            await asyncio.sleep(2)
+            await asyncio.sleep(2) # Pausa para o DataImpulse rotacionar o IP
 
 @app.post("/gerar-teste-ufo")
 async def api_gerar_teste(payload: TesteRequest):
