@@ -72,35 +72,45 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
             print(f"  [DEBUG] Erro interno no dropdown: {str(e)}")
     return False
 
-# ⚠️ REMOVIDO: BLOQUEIO DE RECURSOS PARA EVITAR QUEBRA DA UI
-# async def abortar_recursos_pesados(route: Route): ...
-
 async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_navegador: bool, max_retries: int = 3):
     cfg = CONFIG_PAINEIS.get(servidor_key.upper())
     if not cfg: return {"sucesso": False, "erro": f"Servidor {servidor_key} não configurado."}
 
+    # 💉 CIRURGIA DE PROXY: Extraindo dados da PROXY_URL para o formato compatível com Camoufox
     url_do_proxy = os.getenv("PROXY_URL")
-    meu_proxy = {"server": url_do_proxy} if url_do_proxy else None
+    meu_proxy = None
+
+    if url_do_proxy:
+        try:
+            # Quebra a URL: http://usuario:senha@gw.dataimpulse.com:823
+            clean_url = url_do_proxy.replace("http://", "").replace("https://", "")
+            auth, address = clean_url.split("@")
+            user, password = auth.split(":")
+            
+            meu_proxy = {
+                "server": f"http://{address}",
+                "username": user,
+                "password": password
+            }
+            print(f"  [DEBUG] Proxy autenticado configurado para: {address}") #
+        except Exception as e:
+            print(f"  [DEBUG] Falha ao processar PROXY_URL, usando formato simples: {e}")
+            meu_proxy = {"server": url_do_proxy}
 
     for tentativa in range(1, max_retries + 1):
         try:
             print(f"🚀 Iniciando geração em {servidor_key} (Tentativa {tentativa})...")
             
-            # 🚀 AJUSTE 1: GEOIP=FALSE PARA INICIALIZAÇÃO INSTANTÂNEA
+            # GeoIP=False para evitar latência excessiva em proxies residenciais
             async with AsyncCamoufox(headless=not ver_navegador, proxy=meu_proxy, geoip=False) as browser:
                 page = await browser.new_page()
-                
                 await page.set_viewport_size({"width": 1366, "height": 768})
                 
-                # 🚀 AJUSTE 2: REMOVIDO O ROUTE ABORT (Priorizar carregamento completo)
-                # if not ver_navegador: await page.route("**/*", abortar_recursos_pesados)
-                
-                page.set_default_timeout(40000) # Aumentado para 40s total
+                # Timeout estendido para 40s (Proxies residenciais oscilam muito no início)
+                page.set_default_timeout(40000) 
                 await page.goto(cfg["url"], wait_until="domcontentloaded", timeout=40000) 
                 
                 print("  [DEBUG] Tela acessada. Procurando input de senha...")
-                
-                # 🚀 AJUSTE 3: AUMENTADO O TIMEOUT DO INPUT PARA 35S (Proxy residencial oscila muito)
                 await page.locator('input[type="password"]').first.wait_for(state="visible", timeout=35000)
                 await page.locator('input[type="text"]:not([type="hidden"])').first.fill(cfg["usuario"])
                 await page.locator('input[type="password"]').first.fill(cfg["senha"])
@@ -108,7 +118,7 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 await page.locator('#kt_sign_in_submit, button[type="submit"]').first.click()
                 await page.wait_for_url("**/dashboard**", timeout=20000)
 
-                # Destruir modais
+                # Limpeza de Modais
                 try:
                     await page.evaluate("""() => {
                         document.querySelectorAll('.modal, .modal-backdrop').forEach(el => el.remove());
@@ -137,27 +147,22 @@ async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_naveg
                 nome_input = page.locator(cfg['nome_selector'])
                 await nome_input.wait_for(state="visible")
                 await nome_input.fill(nome_cliente)
-                
                 await page.locator(cfg['salvar_selector']).click(force=True) 
 
                 print("  [DEBUG] Botão salvar clicado. Extraindo dados...")
                 
-                txt = ""
-                u_iptv, p_iptv = None, None
-                
+                txt, u_iptv, p_iptv = "", None, None
                 for _ in range(25): 
                     try:
                         containers = page.locator('.swal2-html-container, .el-message-box__content, .el-dialog__body, .modal-body, pre, .toast-message')
                         count = await containers.count()
-                        
                         for i in range(count):
                             cont = containers.nth(i)
                             if await cont.is_visible():
                                 temp_txt = await cont.inner_text()
                                 u_test, p_test = extract_credentials_robust(temp_txt)
                                 if u_test and len(u_test) >= 3:
-                                    txt = temp_txt
-                                    u_iptv, p_iptv = u_test, p_test
+                                    txt, u_iptv, p_iptv = temp_txt, u_test, p_test
                                     break
                     except Exception: pass
                     if u_iptv: break
