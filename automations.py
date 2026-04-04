@@ -58,7 +58,7 @@ async def abortar_recursos_pesados(route: Route):
     else:
         await route.continue_()
 
-async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_navegador: bool, max_retries: int = 6):
+async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_navegador: bool, max_retries: int = 15):
     cfg = CONFIG_PAINEIS.get(servidor_key.upper())
     if not cfg: return {"sucesso": False, "erro": f"Servidor {servidor_key} não configurado."}
 
