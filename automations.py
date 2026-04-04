@@ -56,6 +56,13 @@ async def selecionar_menu_elementui(page, selector_dropdown: str, regex_busca: s
         except Exception: pass
     return False
 
+async def abortar_recursos_pesados(route: Route):
+    # Aborta o download de imagens, mídias (vídeos/áudio) e fontes.
+    if route.request.resource_type in ["image", "media", "font"]:
+        await route.abort()
+    else:
+        await route.continue_()
+
 async def gerar_teste_iptv_async(nome_cliente: str, servidor_key: str, ver_navegador: bool, max_retries: int = 3):
     cfg = CONFIG_PAINEIS.get(servidor_key.upper())
     if not cfg: return {"sucesso": False, "erro": f"Servidor {servidor_key} não configurado."}
